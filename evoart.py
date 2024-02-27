@@ -9,13 +9,22 @@ import random
 
 from evol import Population, Evolution
 
+SIDES = 3
+POLYGON_COUNT = 100
+
+def make_polygon():
+  r = random.randrange(0,256)
+  g = random.randrange(0,256)
+  b = random.randrange(0,256)
+  a = random.randrange(30,60)
+  return(r,g,b,a)
 
 def initialise():
-  return [random.choice([0, 1]) for i in range(16)]
+  return [make_polygon() for i in range(POLYGON_COUNT)]
+#SIDES was in makepoly bracket
 
 
-def evaluate(x):
-  return sum(x)
+
 
 
 def select(population):
@@ -26,21 +35,22 @@ def combine(*parents):
   return [a if random.random() < 0.5 else b for a, b in zip(*parents)]
 
 
-def flip(x, rate):
-  return [1 ^ i if random.random() < rate else i for i in x]
 
 
-population = Population.generate(initialise, evaluate, size=10, maximize=True)
-population.evaluate()
 
 
 
 
 def evolve(population, args):
-  population.survive(fraction=0.5)
-  population.breed(parent_picker=select, combiner=combine)
-  population.mutate(mutate_function=mutate, rate=0.1)
-  return population
+#  population.survive(fraction=0.5)
+ # population.breed(parent_picker=select, combiner=combine)
+  #population.mutate(mutate_function=mutate, rate=0.1)
+  #return population
+  draw(population.current_best.chromosome).save("solution.png")
+  #draw(population.current_best.chromosome).save("solution.png")
+  exit()
+
+
 
 def draw(solution):
   image = Image.new("RGB", (200, 200))
