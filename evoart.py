@@ -49,6 +49,26 @@ def select(population):
 def combine(*parents):
   return [a if random.random() < 0.5 else b for a, b in zip(*parents)]
 
+def mutate(solution, rate):
+  solution = list(solution)
+
+  if random.random() < 0.5:
+    # mutate points
+    i = random.randrange(len(solution))
+    polygon = list(solution[i])
+    coords = [x for point in polygon[1:] for x in point]
+    coords = [x if random.random() > rate else
+              x + random.normalvariate(0, 10) for x in coords]
+    coords = [max(0, min(int(x), 200)) for x in coords]
+    polygon[1:] = list(zip(coords[::2], coords[1::2]))
+    solution[i] = polygon
+  else:
+    # reorder polygons
+    random.shuffle(solution)
+
+
+  return solution
+
 
 
 
@@ -57,11 +77,15 @@ def combine(*parents):
 
 
 def evolve(population, args):
+  print("evolving")
 #  population.survive(fraction=0.5)
  # population.breed(parent_picker=select, combiner=combine)
   #population.mutate(mutate_function=mutate, rate=0.1)
   #return population
+  mutate(solution="solution.png",rate=0.4)
+  print("mutating")
   if(population.current_best):
+    mutate()
     draw(population.current_best.chromosome).save("solution.png")
   #draw(population.current_best.chromosome).save("solution.png")
   exit()
