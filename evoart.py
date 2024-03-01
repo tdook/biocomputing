@@ -82,7 +82,7 @@ def evolve(population, args):
  # population.breed(parent_picker=select, combiner=combine)
   #population.mutate(mutate_function=mutate, rate=0.1)
   #return population
-  mutate(solution="solution.png",rate=0.4)
+  mutate(solution="solution.png",rate=0.1)
   print("mutating")
   if(population.current_best):
     mutate()
@@ -100,4 +100,5 @@ def draw(solution):
   return image
 
 population = Population.generate(initialise, evaluate, size=10, maximize=True)
+population = population.survive(fraction=0.5).breed()
 draw(population[0].chromosome).save("solution.png")
