@@ -4,7 +4,7 @@
 # Copyright (C) 2024  Paweł Widera
 # ICOS, School of Computing Science, Newcastle University
 #
-# This program is can only be used as part of CSC2034 coursework.
+# This program can only be used as part of CSC2034 coursework.
 # You can't redistribute it and/or share it with others.
 
 """
@@ -17,6 +17,9 @@ Usage: run.py [options] <target-file>
 Options:
   -s NUM, --seed=NUM    seed for a random number generator [default: 31]
   -j NUM, --jobs=NUM    number of parallel jobs [default: 1]
+
+Logging options:
+  -t NUM, --step=NUM    log every NUM generation [default: 10]
   -l NAME, --log=NAME   name of the log file
 
 Evolution parameters:
@@ -26,11 +29,15 @@ Evolution parameters:
 """
 import sys
 import random
-import pathlib
+import atexit
+import multiprocessing
 
-import PIL
 import evol
-import docopt
+import PIL.Image
+import PIL.ImageChops
+
+from pathlib import Path
+from docopt import docopt
 
 from evoart import evolve, initialise, draw
 
@@ -38,12 +45,22 @@ from evoart import evolve, initialise, draw
 MAX = 255 * 200 * 200
 TARGET = None
 
-
-class SimpleLogger(evol.logger.BaseLogger):
-    def log(self, population, **kwargs):
-        values = [i.fitness for i in population]
-        stats = [kwargs["generation"], min(values), max(values)]
-        self.logger.info(",".join(map(str, stats)))
+# For parallel evaluation on win/macos, target image has to be read
+# before declaration of the evaluate function. This is due to no option
+# to fork the process. Instead, a new process is created and code is
+# imported. This results in ignoring any later assignments to TARGET.
+# We could pass the image around, instead of using a a module but that
+# significantly slows down the evaluation process. Therefore, unless
+# you all switch to GNU/Linux, we have to suffer this ugliness here.
+args = docopt(__doc__)
+path = Path(args["<target-file>"])
+# check if file exists
+if not path.exists():
+    print("Cannot find", path, file=sys.stderr)
+    exit(1)
+# read the target image
+TARGET = PIL.Image.open(path)
+TARGET.load()  # closes the file, needed for parallel eval
 
 
 def evaluate(solution):
@@ -54,36 +71,73 @@ def evaluate(solution):
     return (MAX - count) / MAX
 
 
+class Population(evol.population.BasePopulation):
+    def __init__(self, map, initialise, size):
+        chromosomes = [initialise() for i in range(size)]
+        super().__init__(chromosomes, None, maximize=True)
+        self.map = map
+        self.evals = 0
+
+    def evaluate(self, lazy=True):
+        offspring = [x for x in self.individuals if x.fitness is None]
+
+        if offspring:
+            scores = self.map(evaluate, (x.chromosome for x in offspring))
+            for ind, score in zip(offspring, scores):
+                ind.fitness = score
+            self.evals += len(scores)
+
+        return self
+
+
+class Logger(evol.logger.BaseLogger):
+    def __init__(self, target=None, stdout=False, step=1):
+        if target:
+            target = Path(target).absolute()
+            target.parent.mkdir(parents=True, exist_ok=True)
+        super().__init__(target, stdout)
+
+        self.step = step
+        self.count = 0
+
+    def log(self, population, *, generation):
+        self.count += 1
+        if self.count >= self.step:
+            self.count = 0
+            values = [i.fitness for i in population]
+            stats = [generation, population.evals, round(min(values), 3), round(max(values), 3)]
+            self.logger.info(",".join(map(str, stats)))
+
+
 if __name__ == "__main__":
-    args = docopt.docopt(__doc__)
-
-    # check path to the target image
-    path = pathlib.Path(args["<target-file>"])
-    if not path.exists():
-        print("Cannot find", path, file=sys.stderr)
-        exit(1)
-
-    # load the target image and close the file
-    TARGET = PIL.Image.open(path)
-    TARGET.load()
-
     # setup logging
-    if args["--log"]:
-        logger = SimpleLogger(target=args["--log"])
+    log_step = int(args["--step"])
+    if (log_file := args["--log"]):
+        logger = Logger(step=log_step, target=log_file)
     else:
-        logger = SimpleLogger(stdout=True)
+        logger = Logger(step=log_step, stdout=True)
 
-    # for reproducibility fix the RNG seed
+    # fix the RNG seed for reproducibility
     random.seed(int(args["--seed"]))
 
+    # setup parallel evaluation
+    jobs = int(args["--jobs"])
+    if jobs > 1:
+        pool = multiprocessing.Pool(jobs)
+        atexit.register(pool.close)
+        map = pool.map
+
     # create the first population
-    population = evol.Population.generate(initialise, evaluate, maximize=True,
-        size=int(args["--pop-size"]), concurrent_workers=int(args["--jobs"]))
+    population = Population(map, initialise, int(args["--pop-size"]))
 
     # run the evolution
-    for i in range(int(args["--generations"])):
+    for i in range(1, int(args["--generations"])):
         evolve(population, args).callback(logger.log, generation=i)
 
+    # log the last iteration (ignoring the step)
+    logger.step = 1
+    evolve(population, args).callback(logger.log, generation=i + 1)
+
     # save best solution as image
-    best = draw(population.current_best.chromosome)
-    best.save(path.with_stem(path.stem + "_best"))
+    name = "best_{}_p{--pop-size}_g{--generations}".format(path.stem, **args)
+    draw(population.current_best.chromosome).save(path.with_stem(name))

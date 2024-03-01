@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 import random
 
 from evol import Population, Evolution
+#from run import evaluate
 
 SIDES = 3
 POLYGON_COUNT = 100
@@ -17,14 +18,28 @@ def make_polygon():
   g = random.randrange(0,256)
   b = random.randrange(0,256)
   a = random.randrange(30,60)
-  return(r,g,b,a)
+  x1 = random.randrange(11,189)
+  y1 = random.randrange(11,189)
+  x2 = random.randrange(11, 189)
+  y2 = random.randrange(11, 189)
+  x3 = random.randrange(11, 189)
+  y3 = random.randrange(11, 189)
+
+  return[(r,g,b,a),(x1,y1), (x2,y2), (x3,y3)]
 
 def initialise():
   return [make_polygon() for i in range(POLYGON_COUNT)]
+
+
+
 #SIDES was in makepoly bracket
 
-
-
+def evaluate(solution):
+  image = draw(solution)
+  diff = ImageChops.difference(image, TARGET)
+  hist = diff.convert("L").histogram()
+  count = sum(i * n for i, n in enumerate(hist))
+  return (MAX - count) / MAX
 
 
 def select(population):
@@ -46,7 +61,8 @@ def evolve(population, args):
  # population.breed(parent_picker=select, combiner=combine)
   #population.mutate(mutate_function=mutate, rate=0.1)
   #return population
-  draw(population.current_best.chromosome).save("solution.png")
+  if(population.current_best):
+    draw(population.current_best.chromosome).save("solution.png")
   #draw(population.current_best.chromosome).save("solution.png")
   exit()
 
@@ -58,3 +74,6 @@ def draw(solution):
   for polygon in solution:
     canvas.polygon(polygon[1:], fill=polygon[0])
   return image
+
+population = Population.generate(initialise, evaluate, size=10, maximize=True)
+draw(population[0].chromosome).save("solution.png")
